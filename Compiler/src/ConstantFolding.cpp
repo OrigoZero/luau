@@ -2,6 +2,7 @@
 #include "ConstantFolding.h"
 
 #include "BuiltinFolding.h"
+#include "FoldMath.h"
 #include "Utils.h"
 #include "Luau/Bytecode.h"
 #include "Luau/Lexer.h"
@@ -464,7 +465,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
         {
             result.type = Constant::Type_Number;
-            result.valueNumber = pow(la.valueNumber, ra.valueNumber);
+            result.valueNumber = FoldMath::pow(la.valueNumber, ra.valueNumber);
         }
         break;
 

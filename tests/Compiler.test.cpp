@@ -10518,6 +10518,47 @@ RETURN R0 59
     );
 }
 
+TEST_CASE("BuiltinFoldingTranscendentalIsIndependentOfTheCLibrary")
+{
+    // Each argument is one at which a common C library (glibc) answers one
+    // ulp away from the value the compiler folds to; the compiler folds
+    // through its own implementation, so every target folds to these.
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+return
+    math.sin(0.11700000000000001),
+    math.cos(0.23999999999999999),
+    math.tan(0.082000000000000003),
+    math.asin(-0.995),
+    math.acos(-0.96499999999999997),
+    math.atan(0.043999999999999997),
+    math.atan2(0.001, 1.5),
+    math.sinh(-49.982999999999997),
+    math.cosh(-47.527000000000001),
+    math.tanh(-0.999),
+    math.log10(0.053999999999999999)
+)",
+                   0,
+                   2
+               ),
+        R"(
+LOADK R0 K0 [0.11673324714446585]
+LOADK R1 K1 [0.97133797485202955]
+LOADK R2 K2 [0.082184285002150206]
+LOADK R3 K3 [-1.4707546131833564]
+LOADK R4 K4 [2.8762397039921428]
+LOADK R5 K5 [0.04397163827103559]
+LOADK R6 K6 [0.00066666656790126085]
+LOADK R7 K7 [-2.5486552485610327e+21]
+LOADK R8 K8 [2.1861695741701148e+20]
+LOADK R9 K9 [-0.76117386166056988]
+LOADK R10 K10 [-1.2676062401770316]
+RETURN R0 11
+)"
+    );
+}
+
 TEST_CASE("BuiltinFoldingProhibited")
 {
     CHECK_EQ(

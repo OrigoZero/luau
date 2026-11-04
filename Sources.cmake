@@ -82,6 +82,7 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/Builtins.cpp
     Compiler/src/BuiltinFolding.cpp
     Compiler/src/ConstantFolding.cpp
+    Compiler/src/FoldMath.cpp
     Compiler/src/CostModel.cpp
     Compiler/src/TableShape.cpp
     Compiler/src/Types.cpp
@@ -90,6 +91,7 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/Builtins.h
     Compiler/src/BuiltinFolding.h
     Compiler/src/ConstantFolding.h
+    Compiler/src/FoldMath.h
     Compiler/src/CostModel.h
     Compiler/src/TableShape.h
     Compiler/src/Types.h

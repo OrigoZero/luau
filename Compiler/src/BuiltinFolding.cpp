@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "BuiltinFolding.h"
 
+#include "FoldMath.h"
+
 #include "Luau/Bytecode.h"
 #include "Luau/Lexer.h"
 
@@ -157,22 +159,22 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
     case LBF_MATH_ACOS:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(acos(args[0].valueNumber));
+            return cnum(FoldMath::acos(args[0].valueNumber));
         break;
 
     case LBF_MATH_ASIN:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(asin(args[0].valueNumber));
+            return cnum(FoldMath::asin(args[0].valueNumber));
         break;
 
     case LBF_MATH_ATAN2:
         if (count == 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number)
-            return cnum(atan2(args[0].valueNumber, args[1].valueNumber));
+            return cnum(FoldMath::atan2(args[0].valueNumber, args[1].valueNumber));
         break;
 
     case LBF_MATH_ATAN:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(atan(args[0].valueNumber));
+            return cnum(FoldMath::atan(args[0].valueNumber));
         break;
 
     case LBF_MATH_CEIL:
@@ -182,12 +184,12 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
     case LBF_MATH_COSH:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(cosh(args[0].valueNumber));
+            return cnum(FoldMath::cosh(args[0].valueNumber));
         break;
 
     case LBF_MATH_COS:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(cos(args[0].valueNumber));
+            return cnum(FoldMath::cos(args[0].valueNumber));
         break;
 
     case LBF_MATH_DEG:
@@ -197,7 +199,7 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
     case LBF_MATH_EXP:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(exp(args[0].valueNumber));
+            return cnum(FoldMath::exp(args[0].valueNumber));
         break;
 
     case LBF_MATH_FLOOR:
@@ -219,20 +221,20 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
     case LBF_MATH_LOG10:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(log10(args[0].valueNumber));
+            return cnum(FoldMath::log10(args[0].valueNumber));
         break;
 
     case LBF_MATH_LOG:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(log(args[0].valueNumber));
+            return cnum(FoldMath::log(args[0].valueNumber));
         else if (count == 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number)
         {
             if (args[1].valueNumber == 2.0)
-                return cnum(log2(args[0].valueNumber));
+                return cnum(FoldMath::log2(args[0].valueNumber));
             else if (args[1].valueNumber == 10.0)
-                return cnum(log10(args[0].valueNumber));
+                return cnum(FoldMath::log10(args[0].valueNumber));
             else
-                return cnum(log(args[0].valueNumber) / log(args[1].valueNumber));
+                return cnum(FoldMath::log(args[0].valueNumber) / FoldMath::log(args[1].valueNumber));
         }
         break;
 
@@ -278,7 +280,7 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
     case LBF_MATH_POW:
         if (count == 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number)
-            return cnum(pow(args[0].valueNumber, args[1].valueNumber));
+            return cnum(FoldMath::pow(args[0].valueNumber, args[1].valueNumber));
         break;
 
     case LBF_MATH_RAD:
@@ -288,12 +290,12 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
     case LBF_MATH_SINH:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(sinh(args[0].valueNumber));
+            return cnum(FoldMath::sinh(args[0].valueNumber));
         break;
 
     case LBF_MATH_SIN:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(sin(args[0].valueNumber));
+            return cnum(FoldMath::sin(args[0].valueNumber));
         break;
 
     case LBF_MATH_SQRT:
@@ -303,12 +305,12 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
     case LBF_MATH_TANH:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(tanh(args[0].valueNumber));
+            return cnum(FoldMath::tanh(args[0].valueNumber));
         break;
 
     case LBF_MATH_TAN:
         if (count == 1 && args[0].type == Constant::Type_Number)
-            return cnum(tan(args[0].valueNumber));
+            return cnum(FoldMath::tan(args[0].valueNumber));
         break;
 
     case LBF_BIT32_ARSHIFT:
