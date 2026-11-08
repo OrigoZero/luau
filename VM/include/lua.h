@@ -235,6 +235,17 @@ LUA_API void lua_createtable(lua_State* L, int narr, int nrec);
 
 LUA_API void lua_setreadonly(lua_State* L, int idx, int enabled);
 LUA_API int lua_getreadonly(lua_State* L, int idx);
+
+// write watch: a watched table reports the first write it takes after it was watched by entering itself in the watch
+// list, a table the host names with lua_setwatchlist, as `list[table] = true`; the write that reports it ends the watch.
+// The host learns which of the tables it watches were written without reading them. A watched table reads as not frozen.
+// returns 1 when the table at idx is watched now, 0 when it cannot be (frozen, foreign, the registry or the watch list)
+LUA_API int lua_watchtable(lua_State* L, int idx);
+LUA_API void lua_unwatchtable(lua_State* L, int idx);
+LUA_API int lua_iswatchedtable(lua_State* L, int idx);
+// the table at idx (or nil) becomes the watch list; it is held in the registry
+LUA_API void lua_setwatchlist(lua_State* L, int idx);
+LUA_API void lua_getwatchlist(lua_State* L);
 LUA_API void lua_setsafeenv(lua_State* L, int idx, int enabled);
 
 LUA_API int lua_getmetatable(lua_State* L, int objindex);
