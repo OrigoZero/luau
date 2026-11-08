@@ -946,8 +946,58 @@ void lua_setreadonly(lua_State* L, int objindex, int enabled)
 
     if (FFlag::LuauFrozenMetaButterfly)
         luaH_setreadonly(L, t, enabled != 0);
-    else
+    else if (enabled || !iswatchedtable(t)) // a watched table is not frozen, and unfreezing it keeps the watch
         t->readonly = bool(enabled);
+}
+
+int lua_watchtable(lua_State* L, int objindex)
+{
+    const TValue* o = index2addr(L, objindex);
+    api_check(L, ttistable(o));
+    LuaTable* t = hvalue(o);
+    if (iswatchedtable(t))
+        return 1;
+    if (t->readonly != 0 || t == hvalue(registry(L)))
+        return 0;
+    const TValue* list = luaH_getwatchlist(L);
+    if (ttistable(list) && hvalue(list) == t)
+        return 0;
+    t->readonly = WATCHED_TABLE_FLAG;
+    return 1;
+}
+
+void lua_unwatchtable(lua_State* L, int objindex)
+{
+    const TValue* o = index2addr(L, objindex);
+    api_check(L, ttistable(o));
+    LuaTable* t = hvalue(o);
+    if (iswatchedtable(t))
+        t->readonly = 0;
+}
+
+int lua_iswatchedtable(lua_State* L, int objindex)
+{
+    const TValue* o = index2addr(L, objindex);
+    return ttistable(o) && iswatchedtable(hvalue(o));
+}
+
+void lua_setwatchlist(lua_State* L, int objindex)
+{
+    luaC_checkGC(L);
+    luaC_threadbarrier(L);
+    const TValue* o = index2addr(L, objindex);
+    api_check(L, ttisnil(o) || (ttistable(o) && hvalue(o)->readonly == 0 && hvalue(o) != hvalue(registry(L))));
+    LuaTable* reg = hvalue(registry(L));
+    TValue* slot = luaH_setp(L, reg, luaH_watchlistkey(), 0);
+    setobj2t(L, slot, o);
+    luaC_barriert(L, reg, o);
+}
+
+void lua_getwatchlist(lua_State* L)
+{
+    luaC_threadbarrier(L);
+    setobj2s(L, L->top, luaH_getwatchlist(L));
+    api_incr_top(L);
 }
 
 int lua_getreadonly(lua_State* L, int objindex)
@@ -1055,6 +1105,8 @@ void lua_rawsetfield(lua_State* L, int idx, const char* k)
     api_checknelems(L, 1);
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
+    if (hvalue(t)->readonly && iswatchedtable(hvalue(t)))
+        luaH_watchedwrite(L, hvalue(t));
     if (hvalue(t)->readonly)
     {
         if (isforeigntable(hvalue(t)))
@@ -1078,6 +1130,8 @@ void lua_rawset(lua_State* L, int idx)
     api_checknelems(L, 2);
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
+    if (hvalue(t)->readonly && iswatchedtable(hvalue(t)))
+        luaH_watchedwrite(L, hvalue(t));
     if (hvalue(t)->readonly)
     {
         if (isforeigntable(hvalue(t)))
@@ -1094,6 +1148,8 @@ void lua_rawseti(lua_State* L, int idx, int n)
     api_checknelems(L, 1);
     StkId o = index2addr(L, idx);
     api_check(L, ttistable(o));
+    if (hvalue(o)->readonly && iswatchedtable(hvalue(o)))
+        luaH_watchedwrite(L, hvalue(o));
     if (hvalue(o)->readonly)
     {
         if (isforeigntable(hvalue(o)))
@@ -1116,6 +1172,8 @@ void lua_rawsetptagged(lua_State* L, int idx, void* p, int tag)
     api_checknelems(L, 1);
     StkId o = index2addr(L, idx);
     api_check(L, ttistable(o));
+    if (hvalue(o)->readonly && iswatchedtable(hvalue(o)))
+        luaH_watchedwrite(L, hvalue(o));
     if (hvalue(o)->readonly)
     {
         if (isforeigntable(hvalue(o)))
@@ -1146,6 +1204,8 @@ int lua_setmetatable(lua_State* L, int objindex)
     {
         if (LUAU_UNLIKELY(isforeigntable(hvalue(obj))))
             luaG_runerror(L, "cannot set the metatable of a foreign table");
+        if (iswatchedtable(hvalue(obj)))
+            luaH_watchedwrite(L, hvalue(obj));
         if (hvalue(obj)->readonly)
             luaG_readonlyerror(L);
         hvalue(obj)->metatable = mt;
@@ -2254,6 +2314,8 @@ void lua_cleartable(lua_State* L, int idx)
     LuaTable* tt = hvalue(t);
     if (LUAU_UNLIKELY(isforeigntable(tt)))
         return luaFT_clear(L, foreigndata(tt));
+    if (iswatchedtable(tt))
+        luaH_watchedwrite(L, tt);
     if (tt->readonly)
         luaG_readonlyerror(L);
     luaH_clear(tt);

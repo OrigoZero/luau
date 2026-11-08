@@ -1839,3 +1839,34 @@ int luaH_getreadonly(LuaTable* t)
 {
     return t->readonly & 1;
 }
+
+// the address whose light userdata keys the watch list in the registry
+static const char watchlistkey = 0;
+
+void* luaH_watchlistkey()
+{
+    return const_cast<char*>(&watchlistkey);
+}
+
+const TValue* luaH_getwatchlist(lua_State* L)
+{
+    return luaH_getp(hvalue(registry(L)), luaH_watchlistkey(), 0);
+}
+
+void luaH_watchedwrite(lua_State* L, LuaTable* t)
+{
+    LUAU_ASSERT(iswatchedtable(t));
+    t->readonly = 0;
+
+    const TValue* list = luaH_getwatchlist(L);
+    if (!ttistable(list))
+        return;
+
+    // the list records the table as a key, which keeps it alive until the host takes it out
+    LuaTable* l = hvalue(list);
+    TValue key;
+    sethvalue(L, &key, t);
+    TValue* slot = luaH_set(L, l, &key);
+    setbvalue(slot, 1);
+    luaC_barriert(L, l, &key);
+}

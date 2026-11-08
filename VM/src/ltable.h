@@ -35,6 +35,19 @@ LUAI_FUNC void luaH_clear(LuaTable* tt);
 LUAI_FUNC void luaH_setreadonly(lua_State* L, LuaTable* t, bool readonly);
 LUAI_FUNC int luaH_getreadonly(LuaTable* t);
 
+// A watched table is a table whose `readonly` byte holds WATCHED_TABLE_FLAG and nothing else: it is neither frozen nor
+// foreign and holds no metamethod cache. The byte is nonzero, so every write path leaves its fast path for the one that
+// checks the byte, and there the first write to a watched table since it was watched calls luaH_watchedwrite before it
+// writes. That clears the mark, so every later write takes the fast path again, and enters the table in the watch list
+// the host named with lua_setwatchlist. The host learns which of the tables it watches were written without reading
+// any of them.
+#define WATCHED_TABLE_FLAG 8
+#define iswatchedtable(t) ((t)->readonly == WATCHED_TABLE_FLAG)
+
+LUAI_FUNC void luaH_watchedwrite(lua_State* L, LuaTable* t);
+LUAI_FUNC const TValue* luaH_getwatchlist(lua_State* L);
+LUAI_FUNC void* luaH_watchlistkey();
+
 #define luaH_setslot(L, t, slot, key) (invalidateTMcache(t), (slot == luaO_nilobject ? luaH_newkey(L, t, key) : cast_to(TValue*, slot)))
 
 extern const LuaNode luaH_dummynode;

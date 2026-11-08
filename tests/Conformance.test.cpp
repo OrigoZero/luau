@@ -1391,6 +1391,59 @@ TEST_CASE("ForeignTable")
     runConformance("foreigntable.luau", [](lua_State* L) { ForeignTableHost::registerGlobals(L); });
 }
 
+TEST_CASE("WatchedTable")
+{
+    runConformance(
+        "watchedtable.luau",
+        [](lua_State* L)
+        {
+            lua_pushcfunction(
+                L,
+                [](lua_State* L)
+                {
+                    luaL_checktype(L, 1, LUA_TTABLE);
+                    lua_pushboolean(L, lua_watchtable(L, 1));
+                    return 1;
+                },
+                "watch"
+            );
+            lua_setglobal(L, "watch");
+            lua_pushcfunction(
+                L,
+                [](lua_State* L)
+                {
+                    luaL_checktype(L, 1, LUA_TTABLE);
+                    lua_unwatchtable(L, 1);
+                    return 0;
+                },
+                "unwatch"
+            );
+            lua_setglobal(L, "unwatch");
+            lua_pushcfunction(
+                L,
+                [](lua_State* L)
+                {
+                    lua_pushboolean(L, lua_iswatchedtable(L, 1));
+                    return 1;
+                },
+                "iswatched"
+            );
+            lua_setglobal(L, "iswatched");
+            lua_pushcfunction(
+                L,
+                [](lua_State* L)
+                {
+                    lua_settop(L, 1);
+                    lua_setwatchlist(L, 1);
+                    return 0;
+                },
+                "setwatchlist"
+            );
+            lua_setglobal(L, "setwatchlist");
+        }
+    );
+}
+
 namespace
 {
 struct CountedAllocator
@@ -1554,6 +1607,77 @@ TEST_CASE("ForeignTableFrozenStateAndMetamethodCache")
         lua_pop(L, 2);
         lua_gc(L, LUA_GCCOLLECT, 0);
     }
+}
+
+TEST_CASE("WatchedTableThroughTheApi")
+{
+    // every raw write the C API makes reports a watched table once, and the list it reports into is the one in force
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_newtable(L);
+    lua_setwatchlist(L, -1);
+    int list = lua_gettop(L);
+    lua_getwatchlist(L);
+    CHECK(lua_rawequal(L, -1, list));
+    lua_pop(L, 1);
+
+    auto reported = [&](int t)
+    {
+        lua_pushvalue(L, t);
+        lua_rawget(L, list);
+        bool yes = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        lua_cleartable(L, list);
+        return yes;
+    };
+
+    lua_newtable(L);
+    int t = lua_gettop(L);
+
+    CHECK(lua_watchtable(L, t) == 1);
+    CHECK(lua_getreadonly(L, t) == 0);
+    lua_pushnumber(L, 1);
+    lua_rawsetfield(L, t, "a");
+    CHECK(reported(t));
+    CHECK(lua_iswatchedtable(L, t) == 0);
+
+    CHECK(lua_watchtable(L, t) == 1);
+    lua_pushnumber(L, 2);
+    lua_rawseti(L, t, 1);
+    CHECK(reported(t));
+
+    CHECK(lua_watchtable(L, t) == 1);
+    lua_pushstring(L, "k");
+    lua_pushnumber(L, 3);
+    lua_rawset(L, t);
+    CHECK(reported(t));
+
+    CHECK(lua_watchtable(L, t) == 1);
+    lua_pushnumber(L, 4);
+    lua_rawsetptagged(L, t, &globalState, 0);
+    CHECK(reported(t));
+
+    CHECK(lua_watchtable(L, t) == 1);
+    lua_pushnumber(L, 5);
+    lua_setfield(L, t, "b");
+    CHECK(reported(t));
+
+    CHECK(lua_watchtable(L, t) == 1);
+    lua_cleartable(L, t);
+    CHECK(reported(t));
+
+    // unfreezing a watched table keeps the watch: it was never frozen
+    CHECK(lua_watchtable(L, t) == 1);
+    lua_setreadonly(L, t, 0);
+    CHECK(lua_iswatchedtable(L, t) == 1);
+
+    // a foreign table and the registry are not watched
+    CHECK(lua_watchtable(L, LUA_REGISTRYINDEX) == 0);
+    lua_newforeigntable(L, &countingCallbacks(), nullptr);
+    CHECK(lua_watchtable(L, -1) == 0);
+    CHECK(lua_isforeigntable(L, -1));
+    lua_pop(L, 1);
 }
 
 TEST_CASE("ForeignTableOutOfMemory")

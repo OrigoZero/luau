@@ -132,6 +132,9 @@ static void moveelements(lua_State* L, int srct, int dstt, int f, int e, int t, 
     LuaTable* src = hvalue(L->base + (srct - 1));
     LuaTable* dst = hvalue(L->base + (dstt - 1));
 
+    if (iswatchedtable(dst))
+        luaH_watchedwrite(L, dst);
+
     if (dst->readonly)
     {
         if (!isforeigntable(dst))
@@ -321,6 +324,9 @@ static int tmove(lua_State* L)
         luaL_argcheck(L, t <= INT_MAX - n + 1, 4, "destination wrap around");
 
         LuaTable* dst = hvalue(L->base + (tt - 1));
+
+        if (iswatchedtable(dst))
+            luaH_watchedwrite(L, dst);
 
         if (dst->readonly) // also checked in moveelements, but this blocks resizes of r/o tables
         {
@@ -629,6 +635,8 @@ static int tsort(lua_State* L)
     luaL_checktype(L, 1, LUA_TTABLE);
     LuaTable* t = hvalue(L->base);
     int n = luaH_getn(t);
+    if (iswatchedtable(t))
+        luaH_watchedwrite(L, t);
     if (t->readonly)
     {
         if (isforeigntable(t))
@@ -782,6 +790,9 @@ static int tclear(lua_State* L)
         lua_cleartable(L, 1);
         return 0;
     }
+
+    if (iswatchedtable(tt))
+        luaH_watchedwrite(L, tt);
 
     if (tt->readonly)
         luaG_readonlyerror(L);

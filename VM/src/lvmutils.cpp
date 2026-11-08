@@ -306,7 +306,11 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
             if (!ttisnil(oldval) || (tm = fasttm(L, h->metatable, TM_NEWINDEX)) == NULL)
             {
                 if (h->readonly)
-                    luaG_readonlyerror(L);
+                {
+                    if (!iswatchedtable(h))
+                        luaG_readonlyerror(L);
+                    luaH_watchedwrite(L, h);
+                }
 
                 // luaH_set would work but would repeat the lookup so we use luaH_setslot that can reuse oldval if it's safe
                 TValue* newval = luaH_setslot(L, h, oldval, key);
