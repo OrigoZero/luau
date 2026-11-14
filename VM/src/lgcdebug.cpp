@@ -37,6 +37,16 @@ static void validateref(global_State* g, GCObject* f, TValue* v)
     }
 }
 
+// a reference from a slot of a table propagation has not yet traversed, which may still be white
+static void validateuntraversedref(global_State* g, TValue* v)
+{
+    if (iscollectable(v))
+    {
+        LUAU_ASSERT(ttype(v) == gcvalue(v)->gch.tt);
+        LUAU_ASSERT(!isdead(g, gcvalue(v)));
+    }
+}
+
 static void validatetable(global_State* g, LuaTable* h)
 {
     int sizenode = 1 << h->lsizenode;
@@ -46,8 +56,17 @@ static void validatetable(global_State* g, LuaTable* h)
     if (h->metatable)
         validateobjref(g, obj2gco(h), obj2gco(h->metatable));
 
+    // the table propagation traverses in slices has its slots below `gcpartialpos' still to traverse (array part above the hash part)
+    int hsize = h->node == &luaH_dummynode ? 0 : sizenode;
+    int untraversed = g->gcpartial == h ? g->gcpartialpos : 0;
+
     for (int i = 0; i < h->sizearray; ++i)
-        validateref(g, obj2gco(h), &h->array[i]);
+    {
+        if (hsize + i < untraversed)
+            validateuntraversedref(g, &h->array[i]);
+        else
+            validateref(g, obj2gco(h), &h->array[i]);
+    }
 
     for (int i = 0; i < sizenode; ++i)
     {
@@ -62,8 +81,16 @@ static void validatetable(global_State* g, LuaTable* h)
             k.tt = gkey(n)->tt;
             k.value = gkey(n)->value;
 
-            validateref(g, obj2gco(h), &k);
-            validateref(g, obj2gco(h), gval(n));
+            if (i < untraversed)
+            {
+                validateuntraversedref(g, &k);
+                validateuntraversedref(g, gval(n));
+            }
+            else
+            {
+                validateref(g, obj2gco(h), &k);
+                validateref(g, obj2gco(h), gval(n));
+            }
         }
     }
 }

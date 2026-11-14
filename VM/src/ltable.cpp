@@ -718,6 +718,8 @@ static void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
 {
     LUAU_ASSERT(!hasmetacache(t));
 
+    luaC_tablemove(L, t);
+
     if (nasize > MAXSIZE || nhsize > MAXSIZE)
         luaG_runerror(L, "table overflow");
 
@@ -1174,6 +1176,8 @@ static LuaNode* newcollidingkey(lua_State* L, LuaTable* t, LuaNode* mp, LuaNode*
     // is colliding node out of its main position?
     if (othern != mp)
     {
+        luaC_tablemove(L, t);
+
         // yes, move colliding node into free position
         while (othern + gnext(othern) != mp)
             othern += gnext(othern); // find previous
@@ -1231,6 +1235,8 @@ static TValue* newkey_DEPRECATED(lua_State* L, LuaTable* t, const TValue* key)
         LuaNode* othern = mainposition(t, &mk);
         if (othern != mp)
         { // is colliding node out of its main position?
+            luaC_tablemove(L, t);
+
             // yes; move colliding node into free position
             while (othern + gnext(othern) != mp)
                 othern += gnext(othern);          // find previous

@@ -201,6 +201,9 @@ typedef struct global_State
     GCObject* grayagain; // list of objects to be traversed atomically
     GCObject* weak;      // list of weak tables (to be cleared)
 
+    struct LuaTable* gcpartial; // table whose traversal propagation continues in slices before the gray list (black, on no list)
+    int gcpartialpos;           // slots of `gcpartial' still to traverse; slots at and past it are traversed
+
     size_t GCthreshold;                       // when totalbytes >= GCthreshold, run GC step
     size_t totalbytes;                        // number of bytes currently allocated
 
