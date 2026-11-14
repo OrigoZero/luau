@@ -106,6 +106,14 @@
             luaC_barrierback(L, obj2gco(t), &t->gclist); \
     }
 
+// entries of `t' are about to move between its slots outside a store: a resize, a hash collision or a sort
+// a table propagation is traversing in slices is handed to `grayagain' first, so an entry it has not yet marked cannot land in a slot it has
+#define luaC_tablemove(L, t) \
+    { \
+        if ((L)->global->gcpartial == (t)) \
+            luaC_barrierback(L, obj2gco(t), &(t)->gclist); \
+    }
+
 #define luaC_objbarrier(L, p, o) \
     { \
         if (isblack(obj2gco(p)) && iswhite(obj2gco(o))) \

@@ -610,6 +610,7 @@ if(TARGET Luau.Conformance)
         tests/Conformance.test.cpp
         tests/DirectFieldAccess.test.cpp
         tests/FeedbackVector.test.cpp
+        tests/GcTableSlices.test.cpp
         tests/IrLowering.test.cpp
         tests/SharedCodeAllocator.test.cpp
         tests/main.cpp)

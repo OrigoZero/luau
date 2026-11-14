@@ -464,7 +464,9 @@ inline void sort_swap(lua_State* L, LuaTable* t, int i, int j)
     int n = t->sizearray;
     LUAU_ASSERT(unsigned(i) < unsigned(n) && unsigned(j) < unsigned(n)); // contract maintained in sort_less after predicate call
 
-    // no barrier required because both elements are in the array before and after the swap
+    // no barrier required because both elements are in the array before and after the swap, unless the collector has traversed part of it
+    luaC_tablemove(L, t);
+
     TValue temp;
     setobj2s(L, &temp, &arr[i]);
     setobj2t(L, &arr[i], &arr[j]);

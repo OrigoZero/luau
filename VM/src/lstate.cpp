@@ -308,6 +308,8 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
         g->gray = NULL;
         g->grayagain = NULL;
         g->weak = NULL;
+        g->gcpartial = NULL;
+        g->gcpartialpos = 0;
         g->totalbytes = sizeof(LG);
         g->gcgoal = LUAI_GCGOAL;
         g->gcstepmul = LUAI_GCSTEPMUL;

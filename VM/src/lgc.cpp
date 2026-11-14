@@ -92,6 +92,15 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcHeapShrinkFix, false)
  * emptying out the `gray` list the second time, we finish the mark stage and do final marking of `grayagain` during atomic phase.
  * GC works correctly without this second-phase mark (called GCSpropagateagain), but it reduces the time spent during atomic phase.
  *
+ * A strong table with more than GC_TABLESLICE slots is traversed in slices of that many during both propagation stages, so one large
+ * table never makes one long step. The table turns black when its traversal starts and is held in `gcpartial` (on no list) with the
+ * number of slots still to traverse; propagation continues it before taking the next object from the gray set. Slots are traversed from
+ * the last one down, so the slots at and past `gcpartialpos` are marked and the ones below it are not yet. The table being black, every
+ * store of a white value into it meets the barrier: in GCSpropagate the barrier moves it to `grayagain` (and it leaves `gcpartial`),
+ * in GCSpropagateagain it marks the value. An entry that moves between slots without a store (a resize, a hash collision, a sort) could
+ * move from the slots not yet traversed to the ones already traversed, so each such move first hands the table to `grayagain` through
+ * luaC_tablemove, from where it is traversed again from its last slot. The atomic phase traverses every table whole.
+ *
  * Sweeping is also incremental, but instead of working at a granularity of an object, it works at a granularity of a page: all GC
  * objects are allocated in special pages (see lmem.cpp for details), and sweeper traverses all objects in one page in one incremental
  * step, freeing objects that aren't reachable (old white), and recoloring all other objects with the new white to prepare them for next
@@ -124,6 +133,9 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcHeapShrinkFix, false)
  */
 
 #define GC_SWEEPPAGESTEPCOST 16
+
+// slots a propagation step traverses of one table at a time; a strong table with more slots is traversed in slices of this many
+#define GC_TABLESLICE 512
 
 #define GC_INTERRUPT(state) \
     { \
@@ -387,6 +399,67 @@ static int traversetable(global_State* g, LuaTable* h)
     return weakkey || weakvalue;
 }
 
+static int tableslots(LuaTable* h)
+{
+    return h->sizearray + (h->node == &luaH_dummynode ? 0 : sizenode(h));
+}
+
+static bool istableweak(global_State* g, LuaTable* h)
+{
+    const char* modev = gettablemode(g, h);
+    return modev && (strchr(modev, 'k') != NULL || strchr(modev, 'v') != NULL);
+}
+
+// traverse the slots of a strong table below `from' down to `to', the array part above the hash part; returns the work done
+static size_t traversetableslots(global_State* g, LuaTable* h, int from, int to)
+{
+    int hsize = h->node == &luaH_dummynode ? 0 : sizenode(h);
+    size_t work = 0;
+
+    for (int s = from; s-- > to;)
+    {
+        if (s >= hsize)
+        {
+            markvalue(g, &h->array[s - hsize]);
+            work += sizeof(TValue);
+        }
+        else
+        {
+            LuaNode* n = gnode(h, s);
+            LUAU_ASSERT(ttype(gkey(n)) != LUA_TDEADKEY || ttisnil(gval(n)));
+            if (ttisnil(gval(n)))
+                removeentry(n); // remove empty entries
+            else
+            {
+                LUAU_ASSERT(!ttisnil(gkey(n)));
+                markvalue(g, gkey(n));
+                markvalue(g, gval(n));
+            }
+            work += sizeof(LuaNode);
+        }
+    }
+
+    return work;
+}
+
+// traverse the next slice of `gcpartial'
+static size_t propagatepartial(global_State* g)
+{
+    LuaTable* h = g->gcpartial;
+    int from = g->gcpartialpos;
+    LUAU_ASSERT(isblack(obj2gco(h)));
+    LUAU_ASSERT(from > 0 && from <= tableslots(h));
+
+    int to = from > GC_TABLESLICE ? from - GC_TABLESLICE : 0;
+    size_t work = traversetableslots(g, h, from, to);
+
+    g->gcpartialpos = to;
+    if (to == 0)
+        g->gcpartial = NULL;
+
+    return work;
+}
+
 /*
 ** All marks are conditional because a GC may happen while the
 ** prototype is still being created
@@ -542,6 +615,9 @@ static void shrinkstackprotected(lua_State* L)
 */
 static size_t propagatemark(global_State* g)
 {
+    if (g->gcpartial)
+        return propagatepartial(g);
+
     GCObject* o = g->gray;
     LUAU_ASSERT(isgray(o));
     gray2black(o);
@@ -551,6 +627,18 @@ static size_t propagatemark(global_State* g)
     {
         LuaTable* h = gco2h(o);
         g->gray = h->gclist;
+
+        // a large strong table is traversed in slices, except by the atomic phase, which has to finish marking
+        if (g->gcstate != GCSatomic && tableslots(h) > GC_TABLESLICE && !istableweak(g, h))
+        {
+            if (h->metatable)
+                markobject(g, cast_to(LuaTable*, h->metatable));
+
+            g->gcpartial = h;
+            g->gcpartialpos = tableslots(h);
+            return sizeof(LuaTable) + propagatepartial(g);
+        }
+
         if (traversetable(g, h)) // table is weak?
             black2gray(o);       // keep it gray
 
@@ -643,7 +731,7 @@ static void embeddermarkref(lua_State* L, int ref)
 static size_t propagateall(global_State* g)
 {
     size_t work = 0;
-    while (g->gray)
+    while (g->gray || g->gcpartial)
     {
         work += propagatemark(g);
     }
@@ -922,6 +1010,7 @@ static void markroot(lua_State* L)
     g->gray = NULL;
     g->grayagain = NULL;
     g->weak = NULL;
+    g->gcpartial = NULL;
     markobject(g, g->mainthread);
     // make global table be traversed before main stack
     markobject(g, g->mainthread->gt);
@@ -1153,12 +1242,12 @@ static size_t gcstep(lua_State* L, size_t limit)
     }
     case GCSpropagate:
     {
-        while (g->gray && cost < limit)
+        while ((g->gray || g->gcpartial) && cost < limit)
         {
             cost += propagatemark(g);
         }
 
-        if (!g->gray)
+        if (!g->gray && !g->gcpartial)
         {
 #ifdef LUAI_GCMETRICS
             g->gcmetrics.currcycle.propagatework = g->gcmetrics.currcycle.explicitwork + g->gcmetrics.currcycle.assistwork;
@@ -1174,12 +1263,12 @@ static size_t gcstep(lua_State* L, size_t limit)
     }
     case GCSpropagateagain:
     {
-        while (g->gray && cost < limit)
+        while ((g->gray || g->gcpartial) && cost < limit)
         {
             cost += propagatemark(g);
         }
 
-        if (!g->gray) // no more `gray' objects
+        if (!g->gray && !g->gcpartial) // no more `gray' objects
         {
 #ifdef LUAI_GCMETRICS
             g->gcmetrics.currcycle.propagateagainwork =
@@ -1399,6 +1488,7 @@ void luaC_fullgc(lua_State* L)
         g->gray = NULL;
         g->grayagain = NULL;
         g->weak = NULL;
+        g->gcpartial = NULL;
         g->gcstate = GCSsweep;
     }
     LUAU_ASSERT(g->gcstate == GCSpause || g->gcstate == GCSsweep);
@@ -1487,6 +1577,10 @@ void luaC_barriertable(lua_State* L, LuaTable* t, GCObject* v)
     black2gray(o); // make table gray (again)
     t->gclist = g->grayagain;
     g->grayagain = o;
+
+    // traversed again from its last slot once taken from `grayagain'
+    if (g->gcpartial == t)
+        g->gcpartial = NULL;
 }
 
 void luaC_barrierback(lua_State* L, GCObject* o, GCObject** gclist)
@@ -1498,6 +1592,10 @@ void luaC_barrierback(lua_State* L, GCObject* o, GCObject** gclist)
     black2gray(o); // make object gray (again)
     *gclist = g->grayagain;
     g->grayagain = o;
+
+    // traversed again from its last slot once taken from `grayagain'
+    if (cast_to(GCObject*, g->gcpartial) == o)
+        g->gcpartial = NULL;
 }
 
 void luaC_upvalclosed(lua_State* L, UpVal* uv)
