@@ -134,8 +134,10 @@ static void moveelements(lua_State* L, int srct, int dstt, int f, int e, int t, 
 
     if (iswatchedtable(dst))
         luaH_watchedwrite(L, dst);
+    else if (isguardedtable(dst))
+        luaH_guardedwrite(L, dst);
 
-    if (dst->readonly)
+    if (iswritelocked(dst))
     {
         if (!isforeigntable(dst))
             luaG_readonlyerror(L);
@@ -327,8 +329,10 @@ static int tmove(lua_State* L)
 
         if (iswatchedtable(dst))
             luaH_watchedwrite(L, dst);
+        else if (isguardedtable(dst))
+            luaH_guardedwrite(L, dst);
 
-        if (dst->readonly) // also checked in moveelements, but this blocks resizes of r/o tables
+        if (iswritelocked(dst)) // also checked in moveelements, but this blocks resizes of r/o tables
         {
             if (!isforeigntable(dst))
                 luaG_readonlyerror(L);
@@ -637,7 +641,9 @@ static int tsort(lua_State* L)
     int n = luaH_getn(t);
     if (iswatchedtable(t))
         luaH_watchedwrite(L, t);
-    if (t->readonly)
+    else if (isguardedtable(t))
+        luaH_guardedwrite(L, t);
+    if (iswritelocked(t))
     {
         if (isforeigntable(t))
             return tsort_foreign(L);
@@ -793,8 +799,10 @@ static int tclear(lua_State* L)
 
     if (iswatchedtable(tt))
         luaH_watchedwrite(L, tt);
+    else if (isguardedtable(tt))
+        luaH_guardedwrite(L, tt);
 
-    if (tt->readonly)
+    if (iswritelocked(tt))
         luaG_readonlyerror(L);
 
     luaH_clear(tt);

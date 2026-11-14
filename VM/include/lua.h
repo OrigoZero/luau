@@ -246,6 +246,15 @@ LUA_API int lua_iswatchedtable(lua_State* L, int idx);
 // the table at idx (or nil) becomes the watch list; it is held in the registry
 LUA_API void lua_setwatchlist(lua_State* L, int idx);
 LUA_API void lua_getwatchlist(lua_State* L);
+// guarded table: every write a guarded table takes (an assignment, a raw set, setmetatable, table.insert, remove, move,
+// sort, clear and freeze) first calls the `guardedwrite` callback with the table, and raises the error the callback
+// names when it answers one. The host decides, from the code running on L, which writes a table it guards takes.
+// A guarded table reads as not frozen, and unfreezing one keeps the guard.
+// returns 1 when the table at idx is guarded now, 0 when it cannot be (frozen, foreign, watched, the registry or the
+// watch list)
+LUA_API int lua_guardtable(lua_State* L, int idx);
+LUA_API void lua_unguardtable(lua_State* L, int idx);
+LUA_API int lua_isguardedtable(lua_State* L, int idx);
 LUA_API void lua_setsafeenv(lua_State* L, int idx, int enabled);
 
 LUA_API int lua_getmetatable(lua_State* L, int objindex);
@@ -678,6 +687,10 @@ struct lua_Callbacks
 
     // gets called before a heap object (or array) is freed
     void (*onfree)(lua_State* L, void* block);
+
+    // gets called before a guarded table (lua_guardtable) takes a write; answers NULL to let the write go ahead, or the
+    // message of the error the write raises in its place. The text is copied before the error is raised.
+    const char* (*guardedwrite)(lua_State* L, const void* table);
 };
 typedef struct lua_Callbacks lua_Callbacks;
 

@@ -45,6 +45,19 @@ LUAI_FUNC int luaH_getreadonly(LuaTable* t);
 #define iswatchedtable(t) ((t)->readonly == WATCHED_TABLE_FLAG)
 
 LUAI_FUNC void luaH_watchedwrite(lua_State* L, LuaTable* t);
+
+// A guarded table is a table whose `readonly` byte holds GUARDED_TABLE_FLAG and nothing else: it is neither frozen,
+// foreign nor watched and holds no metamethod cache. The byte is nonzero, so every write path leaves its fast path for
+// the one that checks the byte, and there every write to a guarded table calls luaH_guardedwrite before it writes. That
+// asks the host's `guardedwrite` callback whether the code running on L writes the table: the write goes ahead when the
+// callback answers NULL, and raises the error the callback names otherwise. The mark stays, so every later write asks
+// again. A table with no `guardedwrite` callback set takes every write.
+#define GUARDED_TABLE_FLAG 16
+#define isguardedtable(t) ((t)->readonly == GUARDED_TABLE_FLAG)
+// a table whose byte refuses a write outright or hands it to the foreign host: frozen, or foreign
+#define iswritelocked(t) ((t)->readonly != 0 && !isguardedtable(t))
+
+LUAI_FUNC void luaH_guardedwrite(lua_State* L, LuaTable* t);
 LUAI_FUNC const TValue* luaH_getwatchlist(lua_State* L);
 LUAI_FUNC void* luaH_watchlistkey();
 

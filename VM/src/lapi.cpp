@@ -943,11 +943,51 @@ void lua_setreadonly(lua_State* L, int objindex, int enabled)
     api_check(L, t != hvalue(registry(L)));
     if (LUAU_UNLIKELY(isforeigntable(t)))
         luaG_runerror(L, "cannot change the frozen state of a foreign table");
+    if (isguardedtable(t))
+    {
+        // a guarded table is not frozen, so unfreezing it keeps the guard; freezing it is a write the host is asked
+        // about, and a frozen table refuses every write the guard would have asked about
+        if (!enabled)
+            return;
+        luaH_guardedwrite(L, t);
+        t->readonly = 0;
+    }
 
     if (FFlag::LuauFrozenMetaButterfly)
         luaH_setreadonly(L, t, enabled != 0);
     else if (enabled || !iswatchedtable(t)) // a watched table is not frozen, and unfreezing it keeps the watch
         t->readonly = bool(enabled);
+}
+
+int lua_guardtable(lua_State* L, int objindex)
+{
+    const TValue* o = index2addr(L, objindex);
+    api_check(L, ttistable(o));
+    LuaTable* t = hvalue(o);
+    if (isguardedtable(t))
+        return 1;
+    if (t->readonly != 0 || t == hvalue(registry(L)))
+        return 0;
+    const TValue* list = luaH_getwatchlist(L);
+    if (ttistable(list) && hvalue(list) == t)
+        return 0;
+    t->readonly = GUARDED_TABLE_FLAG;
+    return 1;
+}
+
+void lua_unguardtable(lua_State* L, int objindex)
+{
+    const TValue* o = index2addr(L, objindex);
+    api_check(L, ttistable(o));
+    LuaTable* t = hvalue(o);
+    if (isguardedtable(t))
+        t->readonly = 0;
+}
+
+int lua_isguardedtable(lua_State* L, int objindex)
+{
+    const TValue* o = index2addr(L, objindex);
+    return ttistable(o) && isguardedtable(hvalue(o));
 }
 
 int lua_watchtable(lua_State* L, int objindex)
@@ -1107,7 +1147,9 @@ void lua_rawsetfield(lua_State* L, int idx, const char* k)
     api_check(L, ttistable(t));
     if (hvalue(t)->readonly && iswatchedtable(hvalue(t)))
         luaH_watchedwrite(L, hvalue(t));
-    if (hvalue(t)->readonly)
+    else if (isguardedtable(hvalue(t)))
+        luaH_guardedwrite(L, hvalue(t));
+    if (iswritelocked(hvalue(t)))
     {
         if (isforeigntable(hvalue(t)))
         {
@@ -1132,7 +1174,9 @@ void lua_rawset(lua_State* L, int idx)
     api_check(L, ttistable(t));
     if (hvalue(t)->readonly && iswatchedtable(hvalue(t)))
         luaH_watchedwrite(L, hvalue(t));
-    if (hvalue(t)->readonly)
+    else if (isguardedtable(hvalue(t)))
+        luaH_guardedwrite(L, hvalue(t));
+    if (iswritelocked(hvalue(t)))
     {
         if (isforeigntable(hvalue(t)))
             return luaFT_set(L, foreigndata(hvalue(t)));
@@ -1150,7 +1194,9 @@ void lua_rawseti(lua_State* L, int idx, int n)
     api_check(L, ttistable(o));
     if (hvalue(o)->readonly && iswatchedtable(hvalue(o)))
         luaH_watchedwrite(L, hvalue(o));
-    if (hvalue(o)->readonly)
+    else if (isguardedtable(hvalue(o)))
+        luaH_guardedwrite(L, hvalue(o));
+    if (iswritelocked(hvalue(o)))
     {
         if (isforeigntable(hvalue(o)))
         {
@@ -1174,7 +1220,9 @@ void lua_rawsetptagged(lua_State* L, int idx, void* p, int tag)
     api_check(L, ttistable(o));
     if (hvalue(o)->readonly && iswatchedtable(hvalue(o)))
         luaH_watchedwrite(L, hvalue(o));
-    if (hvalue(o)->readonly)
+    else if (isguardedtable(hvalue(o)))
+        luaH_guardedwrite(L, hvalue(o));
+    if (iswritelocked(hvalue(o)))
     {
         if (isforeigntable(hvalue(o)))
             luaG_runerror(L, "cannot use a pointer as the key of a foreign table");
@@ -1206,7 +1254,9 @@ int lua_setmetatable(lua_State* L, int objindex)
             luaG_runerror(L, "cannot set the metatable of a foreign table");
         if (iswatchedtable(hvalue(obj)))
             luaH_watchedwrite(L, hvalue(obj));
-        if (hvalue(obj)->readonly)
+        else if (isguardedtable(hvalue(obj)))
+            luaH_guardedwrite(L, hvalue(obj));
+        if (iswritelocked(hvalue(obj)))
             luaG_readonlyerror(L);
         hvalue(obj)->metatable = mt;
         if (mt)
@@ -2316,7 +2366,9 @@ void lua_cleartable(lua_State* L, int idx)
         return luaFT_clear(L, foreigndata(tt));
     if (iswatchedtable(tt))
         luaH_watchedwrite(L, tt);
-    if (tt->readonly)
+    else if (isguardedtable(tt))
+        luaH_guardedwrite(L, tt);
+    if (iswritelocked(tt))
         luaG_readonlyerror(L);
     luaH_clear(tt);
 }

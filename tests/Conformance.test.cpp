@@ -1446,6 +1446,83 @@ TEST_CASE("WatchedTable")
 
 namespace
 {
+bool guardRefuses = false;
+int guardAsked = 0;
+
+const char* guardedWrite(lua_State* L, const void* table)
+{
+    guardAsked++;
+    return guardRefuses ? "the host refuses this write" : nullptr;
+}
+} // namespace
+
+TEST_CASE("GuardedTable")
+{
+    guardRefuses = false;
+    guardAsked = 0;
+    runConformance(
+        "guardedtable.luau",
+        [](lua_State* L)
+        {
+            lua_callbacks(L)->guardedwrite = guardedWrite;
+            lua_pushcfunction(
+                L,
+                [](lua_State* L)
+                {
+                    luaL_checktype(L, 1, LUA_TTABLE);
+                    lua_pushboolean(L, lua_guardtable(L, 1));
+                    return 1;
+                },
+                "guard"
+            );
+            lua_setglobal(L, "guard");
+            lua_pushcfunction(
+                L,
+                [](lua_State* L)
+                {
+                    luaL_checktype(L, 1, LUA_TTABLE);
+                    lua_unguardtable(L, 1);
+                    return 0;
+                },
+                "unguard"
+            );
+            lua_setglobal(L, "unguard");
+            lua_pushcfunction(
+                L,
+                [](lua_State* L)
+                {
+                    lua_pushboolean(L, lua_isguardedtable(L, 1));
+                    return 1;
+                },
+                "isguarded"
+            );
+            lua_setglobal(L, "isguarded");
+            lua_pushcfunction(
+                L,
+                [](lua_State* L)
+                {
+                    guardRefuses = lua_toboolean(L, 1) != 0;
+                    return 0;
+                },
+                "refusing"
+            );
+            lua_setglobal(L, "refusing");
+            lua_pushcfunction(
+                L,
+                [](lua_State* L)
+                {
+                    lua_pushinteger(L, guardAsked);
+                    return 1;
+                },
+                "asked"
+            );
+            lua_setglobal(L, "asked");
+        }
+    );
+}
+
+namespace
+{
 struct CountedAllocator
 {
     int allocationsLeft = 0;

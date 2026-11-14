@@ -1853,6 +1853,17 @@ const TValue* luaH_getwatchlist(lua_State* L)
     return luaH_getp(hvalue(registry(L)), luaH_watchlistkey(), 0);
 }
 
+void luaH_guardedwrite(lua_State* L, LuaTable* t)
+{
+    LUAU_ASSERT(isguardedtable(t));
+    const char* (*guardedwrite)(lua_State*, const void*) = L->global->cb.guardedwrite;
+    if (!guardedwrite)
+        return;
+    const char* refusal = guardedwrite(L, t);
+    if (refusal)
+        luaG_runerror(L, "%s", refusal);
+}
+
 void luaH_watchedwrite(lua_State* L, LuaTable* t)
 {
     LUAU_ASSERT(iswatchedtable(t));
