@@ -241,6 +241,13 @@ typedef struct global_State
 
     lua_Callbacks cb;
 
+    // The interpreter's bytecode safepoints call cb.interrupt at one safepoint in every
+    // `interruptstride`: `interruptcountdown` is the safepoints left before the next call, and
+    // `interruptload` the count it started from, which that call stands for.
+    int interruptcountdown;
+    int interruptload;
+    int interruptstride;
+
     lua_ExecutionCallbacks ecb;
 
     alignas(16) uint8_t ecbdata[LUA_EXECUTION_CALLBACK_STORAGE];
@@ -362,3 +369,15 @@ union GCObject
 
 LUAI_FUNC lua_State* luaE_newthread(lua_State* L);
 LUAI_FUNC void luaE_freethread(lua_State* L, lua_State* L1, struct lua_Page* page);
+
+// Counts one bytecode safepoint against the interrupt's stride. Answers 0 while the stride runs and,
+// at the safepoint that completes it, the number of bytecode safepoints the interrupt call made
+// there stands for, starting the next stride.
+LUAU_FORCEINLINE int luaE_interruptsafepoint(global_State* g)
+{
+    if (--g->interruptcountdown > 0)
+        return 0;
+    int served = g->interruptload - g->interruptcountdown;
+    g->interruptcountdown = g->interruptload = g->interruptstride;
+    return served;
+}

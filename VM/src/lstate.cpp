@@ -247,6 +247,7 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
         g->gcstepsize = LUAI_GCSTEPSIZE << 10;
 
         g->cb = lua_Callbacks();
+        g->interruptcountdown = g->interruptload = g->interruptstride = 1;
         g->ecb = lua_ExecutionCallbacks();
         g->gcstats = GCStats();
 
@@ -364,6 +365,7 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
         g->memcatbytes[0] = sizeof(LG);
 
         g->cb = lua_Callbacks();
+        g->interruptcountdown = g->interruptload = g->interruptstride = 1;
 
         g->ecb = lua_ExecutionCallbacks();
 

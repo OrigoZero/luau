@@ -683,6 +683,20 @@ typedef struct lua_Callbacks lua_Callbacks;
 
 LUA_API lua_Callbacks* lua_callbacks(lua_State* L);
 
+/* The interpreter's bytecode safepoints (loop back edges, call/ret) call `interrupt` at one safepoint
+ * in every `stride` of them; the default stride of 1 calls it at every one. Such a call passes minus
+ * the number of bytecode safepoints it stands for as `gc`: the one it is made at and those the stride
+ * passed over since the call before it (-1 at a stride of 1). Native code, the string matcher and the
+ * collector call it at each of their safepoints, the first two with -1.
+ *
+ * The stride belongs to the VM's global state, shared by all coroutines, and is set on the thread
+ * running the VM or while the VM runs no code; setting it starts a stride of the new length. */
+LUA_API void lua_setinterruptstride(lua_State* L, int stride);
+LUA_API int lua_getinterruptstride(lua_State* L);
+
+// Makes the next bytecode safepoint call `interrupt`; the stride starts again from there.
+LUA_API void lua_interruptatnext(lua_State* L);
+
 // Must be called after lua_newstate and before the state creates any additional objects
 // The VM makes no assumptions about the layout or structure of the caged heap
 // The VM does assume that the embedder will free any memory allocated if the main lua_State the cage is associated with is closed

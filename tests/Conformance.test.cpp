@@ -4362,6 +4362,68 @@ TEST_CASE("Interrupt")
     }
 }
 
+TEST_CASE("InterruptStride")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    static int calls;
+    static int stood;
+
+    lua_callbacks(L)->interrupt = [](lua_State* L, int gc)
+    {
+        if (gc >= 0)
+            return;
+
+        calls++;
+        stood += -gc;
+    };
+
+    const char* source = "local n = 0 for i = 1, 1000 do n += i end return n";
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source, strlen(source), nullptr, &bytecodeSize);
+
+    auto run = [&](int stride)
+    {
+        lua_setinterruptstride(L, stride);
+        calls = 0;
+        stood = 0;
+        REQUIRE(luau_load(L, "=stride", bytecode, bytecodeSize, 0) == 0);
+        REQUIRE(lua_pcall(L, 0, 1, 0) == LUA_OK);
+        CHECK(lua_tonumber(L, -1) == 500500);
+        lua_pop(L, 1);
+    };
+
+    // At the default stride every bytecode safepoint calls the interrupt, each call standing for itself.
+    CHECK(lua_getinterruptstride(L) == 1);
+    run(1);
+    int safepoints = calls;
+    CHECK(safepoints >= 1000);
+    CHECK(stood == safepoints);
+
+    // At a stride of 32 one safepoint in 32 calls it, and each call stands for the 32.
+    run(32);
+    CHECK(lua_getinterruptstride(L) == 32);
+    CHECK(calls == safepoints / 32);
+    CHECK(stood == calls * 32);
+
+    // A stride longer than the run calls it at no safepoint, until the next safepoint is asked for.
+    run(1 << 30);
+    CHECK(calls == 0);
+
+    lua_setinterruptstride(L, 1 << 30);
+    lua_interruptatnext(L);
+    calls = 0;
+    stood = 0;
+    REQUIRE(luau_load(L, "=stride", bytecode, bytecodeSize, 0) == 0);
+    REQUIRE(lua_pcall(L, 0, 1, 0) == LUA_OK);
+    lua_pop(L, 1);
+    CHECK(calls == 1);
+    CHECK(stood == 1);
+
+    free(bytecode);
+}
+
 TEST_CASE("UserdataApi")
 {
     static int dtorhits = 0;
