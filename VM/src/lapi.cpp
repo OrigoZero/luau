@@ -2389,6 +2389,27 @@ lua_Callbacks* lua_callbacks(lua_State* L)
     return &L->global->cb;
 }
 
+void lua_setinterruptstride(lua_State* L, int stride)
+{
+    api_check(L, stride >= 1);
+    global_State* g = L->global;
+    g->interruptstride = stride;
+    g->interruptcountdown = g->interruptload = stride;
+}
+
+int lua_getinterruptstride(lua_State* L)
+{
+    return L->global->interruptstride;
+}
+
+void lua_interruptatnext(lua_State* L)
+{
+    global_State* g = L->global;
+    // The call the next safepoint makes stands for the safepoints counted so far and itself.
+    g->interruptload -= g->interruptcountdown - 1;
+    g->interruptcountdown = 1;
+}
+
 void lua_setmemcat(lua_State* L, int category)
 {
     api_check(L, unsigned(category) < LUA_MEMORY_CATEGORIES);
